@@ -13,6 +13,8 @@ const couponRoutes = require('./routes/couponRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
 const serviceRoutes = require('./routes/serviceRoutes');
+const vehicleCategoryRoutes = require('./routes/vehicleCategoryRoutes');
+const vehicleBrandRoutes = require('./routes/vehicleBrandRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
@@ -33,6 +35,8 @@ app.use('/api/coupons', couponRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/vehicle-categories', vehicleCategoryRoutes);
+app.use('/api/vehicle-brands', vehicleBrandRoutes);
 app.use('/api/admin', adminRoutes);
 
 app.use(notFound);

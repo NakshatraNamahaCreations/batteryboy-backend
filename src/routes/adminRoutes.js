@@ -8,6 +8,18 @@ const { listVendors, createVendor, updateVendor, deleteVendor } = require('../co
 const { listCustomers, getCustomer } = require('../controllers/adminCustomerController');
 const { listBookings, getBooking, updateBooking } = require('../controllers/adminOrderController');
 const { getStats } = require('../controllers/adminStatsController');
+const {
+  listVehicleCategories,
+  createVehicleCategory,
+  updateVehicleCategory,
+  deleteVehicleCategory,
+} = require('../controllers/vehicleCategoryController');
+const {
+  listVehicleBrands,
+  createVehicleBrand,
+  updateVehicleBrand,
+  deleteVehicleBrand,
+} = require('../controllers/vehicleBrandController');
 
 const router = express.Router();
 
@@ -41,5 +53,15 @@ router.get('/customers/:id', getCustomer);
 router.get('/bookings', listBookings);
 router.get('/bookings/:id', getBooking);
 router.patch('/bookings/:id', updateBooking);
+
+router.get('/vehicle-categories', listVehicleCategories);
+router.post('/vehicle-categories', createVehicleCategory);
+router.patch('/vehicle-categories/:id', updateVehicleCategory);
+router.delete('/vehicle-categories/:id', deleteVehicleCategory);
+
+router.get('/vehicle-brands', listVehicleBrands);
+router.post('/vehicle-brands', createVehicleBrand);
+router.patch('/vehicle-brands/:id', updateVehicleBrand);
+router.delete('/vehicle-brands/:id', deleteVehicleBrand);
 
 module.exports = router;
