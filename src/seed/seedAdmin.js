@@ -1,6 +1,9 @@
-// Seeds the first admin login and the starter service catalog (categories +
-// services) described in the Battery Boy product spec, so the admin panel
-// isn't empty on first login. Safe to re-run — everything is upserted.
+// Seeds the first admin login and the service catalog that mirrors what the
+// customer app actually ships (src/data/serviceConfig.js, the Home/Greeting
+// screens' service list, and src/services/pricing.js's servicePrice()) —
+// not an aspirational spec catalog. Safe to re-run — everything is upserted,
+// and any previously-seeded category/service outside this set is removed so
+// stale placeholder data doesn't linger in the admin panel.
 require('dotenv').config();
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -12,48 +15,53 @@ const Service = require('../models/Service');
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'admin@batteryboy.in';
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'BatteryBoy@123';
 
+// One category — the app itself has no service-category grouping, it shows
+// these 6 services together on Home/Greeting. basePrice for "Battery
+// Replacement" is the recommended battery's price (Exide Matrix 45Ah,
+// Rs. 5,990 in data/mock.js) — the app always lets the customer pick a
+// different battery afterwards, which is what actually determines the price.
 const CATALOG = [
   {
-    name: 'Battery Services',
+    name: 'Battery Boy Services',
     icon: 'battery-charging-outline',
     order: 1,
     services: [
-      { name: 'Jump Start', basePrice: 249, estimatedDurationMins: 20, icon: 'flash-outline' },
-      { name: 'Battery Health Check', basePrice: 149, estimatedDurationMins: 15, icon: 'pulse-outline' },
-      { name: 'Battery Replacement', basePrice: 3999, estimatedDurationMins: 30, icon: 'battery-full-outline' },
-      { name: 'Battery Installation', basePrice: 299, estimatedDurationMins: 25, icon: 'construct-outline' },
-      { name: 'Battery Terminal Issue', basePrice: 199, estimatedDurationMins: 15, icon: 'flash-off-outline' },
-      { name: 'Battery Charging', basePrice: 249, estimatedDurationMins: 45, icon: 'battery-half-outline' },
-    ],
-  },
-  {
-    name: 'Tyre Services',
-    icon: 'ellipse-outline',
-    order: 2,
-    services: [
-      { name: 'Flat Tyre Assistance', basePrice: 199, estimatedDurationMins: 25, icon: 'disc-outline' },
-      { name: 'Puncture Assistance', basePrice: 149, estimatedDurationMins: 20, icon: 'build-outline' },
-      { name: 'Spare Wheel Assistance', basePrice: 199, estimatedDurationMins: 20, icon: 'sync-outline' },
-    ],
-  },
-  {
-    name: 'Repair Services',
-    icon: 'hammer-outline',
-    order: 3,
-    services: [
-      { name: 'Vehicle Not Starting', basePrice: 249, estimatedDurationMins: 30, icon: 'warning-outline' },
-      { name: 'Minor Car Repair', basePrice: 349, estimatedDurationMins: 40, icon: 'car-outline' },
-      { name: 'Minor Bike Repair', basePrice: 249, estimatedDurationMins: 30, icon: 'bicycle-outline' },
-      { name: 'Electrical Problem', basePrice: 299, estimatedDurationMins: 35, icon: 'flash-outline' },
-    ],
-  },
-  {
-    name: 'Towing Services',
-    icon: 'car-sport-outline',
-    order: 4,
-    services: [
-      { name: 'Bike Towing', basePrice: 499, estimatedDurationMins: 45, vehicleTypes: ['bike'], icon: 'bicycle-outline' },
-      { name: 'Car Towing', basePrice: 999, estimatedDurationMins: 60, vehicleTypes: ['car'], icon: 'car-outline' },
+      { name: 'Jumpstart', basePrice: 300, estimatedDurationMins: 20, icon: 'flash', description: 'Quick jumpstart to get you back on the road' },
+      {
+        name: 'Battery Replacement',
+        basePrice: 5990,
+        estimatedDurationMins: 30,
+        icon: 'battery-charging',
+        description: 'New battery delivered and fitted at your doorstep',
+      },
+      {
+        name: 'Battery Installation',
+        basePrice: 350,
+        estimatedDurationMins: 25,
+        icon: 'construct',
+        description: 'Professional fitting of a battery you already own',
+      },
+      {
+        name: 'Battery Checkup & Maintenance',
+        basePrice: 0,
+        estimatedDurationMins: 20,
+        icon: 'build',
+        description: 'Full service — terminals, topping up, load test',
+      },
+      {
+        name: 'Scrap Battery Pickup',
+        basePrice: 0,
+        estimatedDurationMins: 20,
+        icon: 'refresh-circle-outline',
+        description: 'Safe pickup, fair price, eco-friendly recycling',
+      },
+      {
+        name: 'Mobile EV Charging',
+        basePrice: 500,
+        estimatedDurationMins: 45,
+        icon: 'flash-outline',
+        description: 'Charging van comes to your EV, wherever it is parked',
+      },
     ],
   },
 ];
@@ -72,6 +80,9 @@ async function seedAdminUser() {
 async function seedCatalog() {
   let categoryCount = 0;
   let serviceCount = 0;
+  const keepCategoryIds = [];
+  const keepServiceKeys = []; // `${categoryId}|${name}`
+
   for (const cat of CATALOG) {
     const category = await Category.findOneAndUpdate(
       { name: cat.name },
@@ -79,6 +90,8 @@ async function seedCatalog() {
       { upsert: true, returnDocument: 'after' },
     );
     categoryCount++;
+    keepCategoryIds.push(category._id);
+
     for (const svc of cat.services) {
       await Service.findOneAndUpdate(
         { name: svc.name, categoryId: category._id },
@@ -86,6 +99,7 @@ async function seedCatalog() {
           $set: {
             name: svc.name,
             categoryId: category._id,
+            description: svc.description || '',
             basePrice: svc.basePrice,
             estimatedDurationMins: svc.estimatedDurationMins,
             vehicleTypes: svc.vehicleTypes || ['both'],
@@ -96,9 +110,22 @@ async function seedCatalog() {
         { upsert: true },
       );
       serviceCount++;
+      keepServiceKeys.push(`${category._id}|${svc.name}`);
     }
   }
+
+  // Remove anything seeded by an earlier version of this script (e.g. the
+  // placeholder "Tyre Services" / "Repair Services" catalog) that doesn't
+  // belong to the real app's service list.
+  const staleServices = await Service.deleteMany({
+    $expr: { $not: { $in: [{ $concat: [{ $toString: '$categoryId' }, '|', '$name'] }, keepServiceKeys] } },
+  });
+  const staleCategories = await Category.deleteMany({ _id: { $nin: keepCategoryIds } });
+
   console.log(`Seeded ${categoryCount} categories, ${serviceCount} services`);
+  if (staleServices.deletedCount || staleCategories.deletedCount) {
+    console.log(`Removed ${staleCategories.deletedCount} stale categories and ${staleServices.deletedCount} stale services`);
+  }
 }
 
 async function run() {
