@@ -11,6 +11,9 @@ const orderRoutes = require('./routes/orderRoutes');
 const warrantyRoutes = require('./routes/warrantyRoutes');
 const couponRoutes = require('./routes/couponRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const categoryRoutes = require('./routes/categoryRoutes');
+const serviceRoutes = require('./routes/serviceRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 
 const app = express();
 
@@ -28,6 +31,9 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/warranties', warrantyRoutes);
 app.use('/api/coupons', couponRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/categories', categoryRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
