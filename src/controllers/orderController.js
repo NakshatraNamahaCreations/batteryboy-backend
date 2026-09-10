@@ -22,6 +22,13 @@ function makeInvoiceNo() {
   return `INV-${yy}${mm}-${rand}`;
 }
 
+// 4-digit code the customer reads out to the technician on arrival —
+// generated the moment the booking is created, not when the technician
+// shows up, so it's ready to display immediately in the app.
+function makeServiceOtp() {
+  return String(Math.floor(1000 + Math.random() * 9000));
+}
+
 // POST /api/orders/quote { services, night, batteryId?, couponCode? }
 // Live price preview — does not touch the database beyond read-only lookups.
 const quoteOrder = asyncHandler(async (req, res) => {
@@ -96,6 +103,7 @@ const createOrder = asyncHandler(async (req, res) => {
     amount: pricing.total,
     status: 'assigned',
     invoiceNo: makeInvoiceNo(),
+    serviceOtp: makeServiceOtp(),
   });
 
   res.status(201).json({ order });

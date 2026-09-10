@@ -40,6 +40,11 @@ const orderSchema = new mongoose.Schema(
       default: 'pending',
     },
     invoiceNo: { type: String, default: '' },
+    // 4-digit code generated the moment the booking is created. The
+    // technician app (not built yet) will eventually collect this from the
+    // customer before starting work; for now it's surfaced read-only in the
+    // customer app (TechnicianOtpScreen) and the admin Bookings page.
+    serviceOtp: { type: String, default: '' },
   },
   { timestamps: true },
 );
