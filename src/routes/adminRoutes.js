@@ -6,7 +6,7 @@ const { listCategories, createCategory, updateCategory, deleteCategory } = requi
 const { listServices, getService, createService, updateService, deleteService } = require('../controllers/serviceController');
 const { listVendors, createVendor, updateVendor, deleteVendor } = require('../controllers/adminVendorController');
 const { listCustomers, getCustomer } = require('../controllers/adminCustomerController');
-const { listBookings, getBooking, updateBooking, nearbyVendorsForBooking } = require('../controllers/adminOrderController');
+const { listBookings, getBooking, createBooking, updateBooking, nearbyVendorsForBooking } = require('../controllers/adminOrderController');
 const { getStats } = require('../controllers/adminStatsController');
 const {
   listVehicleCategories,
@@ -51,6 +51,7 @@ router.get('/customers', listCustomers);
 router.get('/customers/:id', getCustomer);
 
 router.get('/bookings', listBookings);
+router.post('/bookings', createBooking);
 router.get('/bookings/:id', getBooking);
 router.get('/bookings/:id/nearby-vendors', nearbyVendorsForBooking);
 router.patch('/bookings/:id', updateBooking);
