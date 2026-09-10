@@ -23,9 +23,13 @@ const listBookings = asyncHandler(async (req, res) => {
   res.json({ bookings });
 });
 
-// GET /api/admin/bookings/:id
+// GET /api/admin/bookings/:id — full detail view: customer, partner and
+// address populated beyond the name/phone shown in the list table.
 const getBooking = asyncHandler(async (req, res) => {
-  const booking = await Order.findById(req.params.id).populate('userId', 'name phone').populate('vendorId', 'name phone');
+  const booking = await Order.findById(req.params.id)
+    .populate('userId', 'name phone email city referralCode createdAt')
+    .populate('vendorId', 'name phone email city vendorType rating completedJobs verified active online')
+    .populate('addressId', 'label line1 line2 lat lng');
   if (!booking) return res.status(404).json({ message: 'Booking not found' });
   res.json({ booking });
 });
