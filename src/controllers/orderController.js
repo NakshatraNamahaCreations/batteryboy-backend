@@ -5,6 +5,7 @@ const Address = require('../models/Address');
 const Coupon = require('../models/Coupon');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { computePrice, serviceLabel } = require('../utils/pricing');
+const { startDispatch } = require('../services/dispatch');
 
 async function resolveBattery(services, batteryId) {
   if (!services.includes('replacement')) return null;
@@ -43,15 +44,17 @@ const quoteOrder = asyncHandler(async (req, res) => {
   res.json({ pricing, battery });
 });
 
+const VENDOR_PUBLIC_FIELDS = 'name phone rating vendorType completedJobs';
+
 // GET /api/orders
 const listOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ userId: req.userId }).sort({ createdAt: -1 });
+  const orders = await Order.find({ userId: req.userId }).populate('vendorId', VENDOR_PUBLIC_FIELDS).sort({ createdAt: -1 });
   res.json({ orders });
 });
 
 // GET /api/orders/:id
 const getOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findOne({ _id: req.params.id, userId: req.userId });
+  const order = await Order.findOne({ _id: req.params.id, userId: req.userId }).populate('vendorId', VENDOR_PUBLIC_FIELDS);
   if (!order) return res.status(404).json({ message: 'Order not found' });
   res.json({ order });
 });
@@ -101,10 +104,14 @@ const createOrder = asyncHandler(async (req, res) => {
     paymentMethod: paymentMethod || '',
     pricing,
     amount: pricing.total,
-    status: 'assigned',
+    status: 'searching',
     invoiceNo: makeInvoiceNo(),
     serviceOtp: makeServiceOtp(),
   });
+
+  // Fire and forget — the customer gets their booking confirmation
+  // immediately; ring 1 offers go out to nearby partners in the background.
+  startDispatch(order._id).catch((err) => console.error(`[dispatch] failed to start for order ${order._id}:`, err));
 
   res.status(201).json({ order });
 });

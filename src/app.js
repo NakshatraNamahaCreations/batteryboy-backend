@@ -16,6 +16,7 @@ const serviceRoutes = require('./routes/serviceRoutes');
 const vehicleCategoryRoutes = require('./routes/vehicleCategoryRoutes');
 const vehicleBrandRoutes = require('./routes/vehicleBrandRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const vendorRoutes = require('./routes/vendorRoutes');
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/vehicle-categories', vehicleCategoryRoutes);
 app.use('/api/vehicle-brands', vehicleBrandRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/vendor', vendorRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

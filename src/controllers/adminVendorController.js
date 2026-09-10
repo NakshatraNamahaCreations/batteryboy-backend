@@ -16,7 +16,7 @@ const listVendors = asyncHandler(async (req, res) => {
 
 // POST /api/admin/vendors
 const createVendor = asyncHandler(async (req, res) => {
-  const { name, phone, email, city, vendorType, skills, serviceAreas, notes } = req.body;
+  const { name, phone, email, city, vendorType, skills, serviceAreas, notes, lat, lng } = req.body;
   if (!name || !phone) return res.status(400).json({ message: 'name and phone are required' });
 
   const vendor = await Vendor.create({
@@ -28,16 +28,23 @@ const createVendor = asyncHandler(async (req, res) => {
     skills: skills || [],
     serviceAreas: serviceAreas || [],
     notes: notes || '',
+    ...(typeof lat === 'number' && typeof lng === 'number'
+      ? { location: { type: 'Point', coordinates: [lng, lat] }, lastLocationAt: new Date() }
+      : {}),
   });
   res.status(201).json({ vendor });
 });
 
-// PATCH /api/admin/vendors/:id  (also used to toggle verified/active)
+// PATCH /api/admin/vendors/:id  (also used to toggle verified/active, or pin a base location)
 const updateVendor = asyncHandler(async (req, res) => {
   const editable = ['name', 'phone', 'email', 'city', 'vendorType', 'skills', 'serviceAreas', 'verified', 'active', 'notes'];
   const update = {};
   for (const field of editable) {
     if (req.body[field] !== undefined) update[field] = req.body[field];
+  }
+  if (typeof req.body.lat === 'number' && typeof req.body.lng === 'number') {
+    update.location = { type: 'Point', coordinates: [req.body.lng, req.body.lat] };
+    update.lastLocationAt = new Date();
   }
   const vendor = await Vendor.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
   if (!vendor) return res.status(404).json({ message: 'Vendor not found' });

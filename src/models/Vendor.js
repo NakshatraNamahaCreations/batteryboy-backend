@@ -1,8 +1,6 @@
 const mongoose = require('mongoose');
 
-// Technician / roadside-assistance partner. Full dispatch/live-location
-// fields are left for a later phase — this covers what the admin MVP needs:
-// onboarding, verification, and a directory to browse/search.
+// Technician / roadside-assistance partner.
 const vendorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -22,8 +20,19 @@ const vendorSchema = new mongoose.Schema(
     rating: { type: Number, default: 5, min: 0, max: 5 },
     completedJobs: { type: Number, default: 0 },
     notes: { type: String, default: '' },
+    // GeoJSON Point [lng, lat], updated by the partner app every ~15-20s while online.
+    location: {
+      type: { type: String, enum: ['Point'], default: 'Point' },
+      coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
+    },
+    lastLocationAt: { type: Date, default: null },
+    // Mock OTP login, mirrors User — see server/src/utils/otp.js.
+    otpCode: { type: String, default: null },
+    otpExpiresAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
+
+vendorSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Vendor', vendorSchema);

@@ -36,15 +36,28 @@ const orderSchema = new mongoose.Schema(
     amount: { type: Number, required: true },
     status: {
       type: String,
-      enum: ['pending', 'assigned', 'on_way', 'arrived', 'in_progress', 'completed', 'cancelled'],
-      default: 'pending',
+      // 'searching': dispatch engine is broadcasting to nearby partners and
+      // no one has accepted yet. Becomes 'assigned' the instant a partner
+      // accepts (see vendorController.acceptOffer).
+      enum: ['searching', 'pending', 'assigned', 'on_way', 'arrived', 'in_progress', 'completed', 'cancelled'],
+      default: 'searching',
     },
     invoiceNo: { type: String, default: '' },
-    // 4-digit code generated the moment the booking is created. The
-    // technician app (not built yet) will eventually collect this from the
-    // customer before starting work; for now it's surfaced read-only in the
-    // customer app (TechnicianOtpScreen) and the admin Bookings page.
+    // 4-digit code generated the moment the booking is created. The partner
+    // app collects this from the customer on arrival before starting work —
+    // see vendorController.verifyArrivalOtp.
     serviceOtp: { type: String, default: '' },
+
+    // Dispatch ring state — see server/src/services/dispatch.js.
+    vendorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor', default: null, index: true },
+    dispatch: {
+      ring: { type: Number, default: 0 }, // 0 = not started, 1/2/3 = current radius tier
+      ringRadiusKm: { type: Number, default: 0 },
+      startedAt: { type: Date, default: null },
+      ringExpiresAt: { type: Date, default: null },
+      offeredVendorIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+      declinedVendorIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
+    },
   },
   { timestamps: true },
 );
