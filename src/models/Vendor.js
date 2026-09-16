@@ -3,7 +3,10 @@ const mongoose = require('mongoose');
 // Technician / roadside-assistance partner.
 const vendorSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true },
+    // Empty right after self-registration (see vendorAuthController.sendOtp)
+    // — the partner app treats an empty name as "profile setup not done yet"
+    // and routes to the registration screen before Home.
+    name: { type: String, default: '' },
     phone: { type: String, required: true, unique: true, trim: true },
     email: { type: String, default: '' },
     city: { type: String, default: '' },

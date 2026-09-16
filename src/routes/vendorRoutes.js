@@ -3,6 +3,7 @@ const { requireVendor } = require('../middleware/vendorAuth');
 const { sendOtp, verifyOtp } = require('../controllers/vendorAuthController');
 const {
   getMe,
+  updateMe,
   setStatus,
   updateLocation,
   listOffers,
@@ -21,6 +22,7 @@ router.post('/auth/verify-otp', verifyOtp);
 router.use(requireVendor);
 
 router.get('/me', getMe);
+router.patch('/me', updateMe);
 router.patch('/status', setStatus);
 router.patch('/location', updateLocation);
 

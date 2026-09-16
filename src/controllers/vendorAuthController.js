@@ -24,15 +24,21 @@ function serializeVendor(vendor) {
 }
 
 // POST /api/vendor/auth/send-otp { phone }
-// Unlike customer auth, this does NOT upsert a new account — a partner
-// must already be onboarded by the admin (Vendors page) before they can log
-// in. This stops random phone numbers from self-registering as a partner.
+// Rapido-style self-registration: a new phone number gets a bare account
+// (empty name, unverified, inactive for dispatch) instead of a 404 — the
+// partner app then routes them through a one-time profile-completion screen
+// after OTP verification. They can browse the app immediately, but
+// dispatch.findNearbyVendorIds only offers jobs to `verified: true`
+// partners, so an admin still has to approve them (Vendors page) before
+// they receive real bookings.
 const sendOtp = asyncHandler(async (req, res) => {
   const { phone } = req.body;
   if (!phone || !phone.trim()) return res.status(400).json({ message: 'phone is required' });
 
-  const vendor = await Vendor.findOne({ phone: phone.trim() });
-  if (!vendor) return res.status(404).json({ message: 'No partner account found for this number. Ask your operations team to add you first.' });
+  let vendor = await Vendor.findOne({ phone: phone.trim() });
+  if (!vendor) {
+    vendor = await Vendor.create({ phone: phone.trim() });
+  }
 
   const { code, expiresAt } = generateOtp();
   vendor.otpCode = code;

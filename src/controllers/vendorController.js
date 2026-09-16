@@ -11,6 +11,27 @@ const getMe = asyncHandler(async (req, res) => {
   res.json({ vendor: serializeVendor(vendor) });
 });
 
+const VENDOR_TYPES = ['battery_technician', 'mechanic', 'puncture_technician', 'towing_provider', 'multi_service'];
+
+// PATCH /api/vendor/me { name, vendorType?, city?, email? } — completes the
+// profile a self-registered partner starts with (see vendorAuthController.sendOtp).
+const updateMe = asyncHandler(async (req, res) => {
+  const { name, vendorType, city, email } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ message: 'Name is required' });
+  if (vendorType !== undefined && !VENDOR_TYPES.includes(vendorType)) {
+    return res.status(400).json({ message: 'Invalid vendor type' });
+  }
+
+  const update = { name: name.trim() };
+  if (vendorType !== undefined) update.vendorType = vendorType;
+  if (city !== undefined) update.city = city.trim();
+  if (email !== undefined) update.email = email.trim();
+
+  const vendor = await Vendor.findByIdAndUpdate(req.vendorId, { $set: update }, { new: true, runValidators: true });
+  if (!vendor) return res.status(404).json({ message: 'Partner not found' });
+  res.json({ vendor: serializeVendor(vendor) });
+});
+
 // PATCH /api/vendor/status { online }
 const setStatus = asyncHandler(async (req, res) => {
   const { online } = req.body;
@@ -144,4 +165,4 @@ const verifyArrivalOtp = asyncHandler(async (req, res) => {
   res.json({ order });
 });
 
-module.exports = { getMe, setStatus, updateLocation, listOffers, acceptOffer, declineOffer, listJobs, updateJobStatus, verifyArrivalOtp };
+module.exports = { getMe, updateMe, setStatus, updateLocation, listOffers, acceptOffer, declineOffer, listJobs, updateJobStatus, verifyArrivalOtp };
