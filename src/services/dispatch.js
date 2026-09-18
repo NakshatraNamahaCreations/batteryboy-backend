@@ -4,18 +4,20 @@
 // (Order.vendorId is claimed with an atomic findOneAndUpdate, see
 // vendorController.acceptOffer, so two partners can never both win the same job).
 //
-// Timers live in this process's memory (setTimeout), not a persisted job
-// queue — correct as long as the server process stays up between the
-// booking and the last ring's expiry (90s total). A restart mid-dispatch
-// just leaves the order in 'searching' at whatever ring it reached; the
-// partner app's poll loop and the admin's manual-assign option both still
-// work against that state, so nothing is lost, just no further auto-escalation.
+// Timers live in this process's memory (setTimeout) — a restart mid-dispatch,
+// or a ring exhausting with nobody online yet, used to strand the order in
+// 'searching' forever with no further offers. sweepStalledDispatches() below
+// is the safety net: it runs on an interval and re-broadcasts (at the
+// widest radius) to any 'searching' order whose ring has expired with no
+// newer timer picking it up — so a partner who comes online *after* the
+// original 90s window still gets offered the job.
 const Order = require('../models/Order');
 const Vendor = require('../models/Vendor');
 const Address = require('../models/Address');
 
 const RING_RADII_KM = [4, 8, 12];
 const RING_WINDOW_MS = 30 * 1000;
+const SWEEP_INTERVAL_MS = 20 * 1000;
 
 async function findNearbyVendorIds({ lng, lat, radiusKm, excludeIds }) {
   const vendors = await Vendor.find({
@@ -85,4 +87,33 @@ async function runRing(orderId, center, ringNumber) {
   }, RING_WINDOW_MS);
 }
 
-module.exports = { startDispatch, RING_RADII_KM, RING_WINDOW_MS };
+// Re-broadcasts at the widest ring to a 'searching' order that still has no
+// vendorId, once its current ring has expired with nothing picking it up —
+// covers a partner going online after the original window, and a server
+// restart that wiped the in-memory setTimeout chain.
+async function sweepStalledDispatches() {
+  const stuck = await Order.find({
+    status: 'searching',
+    vendorId: null,
+    $or: [{ 'dispatch.ringExpiresAt': null }, { 'dispatch.ringExpiresAt': { $lte: new Date() } }],
+  });
+
+  for (const order of stuck) {
+    try {
+      const address = order.addressId ? await Address.findById(order.addressId) : null;
+      if (!address || address.lat == null || address.lng == null) continue;
+      const nextRing = order.dispatch.ring < RING_RADII_KM.length ? order.dispatch.ring + 1 : RING_RADII_KM.length;
+      await runRing(order._id, { lng: address.lng, lat: address.lat }, nextRing);
+    } catch (err) {
+      console.error(`[dispatch] sweep failed for order ${order._id}:`, err);
+    }
+  }
+}
+
+function startDispatchSweeper() {
+  setInterval(() => {
+    sweepStalledDispatches().catch((err) => console.error('[dispatch] sweep error:', err));
+  }, SWEEP_INTERVAL_MS);
+}
+
+module.exports = { startDispatch, startDispatchSweeper, RING_RADII_KM, RING_WINDOW_MS };
