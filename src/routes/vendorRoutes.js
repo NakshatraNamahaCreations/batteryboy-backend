@@ -12,6 +12,7 @@ const {
   listJobs,
   updateJobStatus,
   verifyArrivalOtp,
+  getEarningsSummary,
 } = require('../controllers/vendorController');
 
 const router = express.Router();
@@ -30,6 +31,7 @@ router.get('/offers', listOffers);
 router.post('/offers/:orderId/accept', acceptOffer);
 router.post('/offers/:orderId/decline', declineOffer);
 
+router.get('/earnings', getEarningsSummary);
 router.get('/jobs', listJobs);
 router.patch('/jobs/:orderId/status', updateJobStatus);
 router.post('/jobs/:orderId/verify-otp', verifyArrivalOtp);

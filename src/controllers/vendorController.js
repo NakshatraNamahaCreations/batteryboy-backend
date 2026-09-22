@@ -121,6 +121,38 @@ const declineOffer = asyncHandler(async (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/vendor/earnings — totals for the common wallet-screen date
+// filters, all computed server-side in one call so switching the period chip
+// on the app is a local state flip, not a fresh network request each time.
+const getEarningsSummary = asyncHandler(async (req, res) => {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
+  const startOfWeek = new Date(startOfToday);
+  startOfWeek.setDate(startOfWeek.getDate() - now.getDay()); // back to this week's Sunday
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+  async function sumSince(since, until) {
+    const match = { vendorId: req.vendorId, status: 'completed', updatedAt: { $gte: since } };
+    if (until) match.updatedAt.$lt = until;
+    const [row] = await Order.aggregate([{ $match: match }, { $group: { _id: null, amount: { $sum: '$amount' }, jobs: { $sum: 1 } } }]);
+    return { amount: row?.amount || 0, jobs: row?.jobs || 0 };
+  }
+
+  const [today, yesterday, week, month, year, allTime] = await Promise.all([
+    sumSince(startOfToday),
+    sumSince(startOfYesterday, startOfToday),
+    sumSince(startOfWeek),
+    sumSince(startOfMonth),
+    sumSince(startOfYear),
+    sumSince(new Date(0)),
+  ]);
+
+  res.json({ today, yesterday, week, month, year, allTime });
+});
+
 // GET /api/vendor/jobs?active=true
 const listJobs = asyncHandler(async (req, res) => {
   const filter = { vendorId: req.vendorId };
@@ -165,4 +197,16 @@ const verifyArrivalOtp = asyncHandler(async (req, res) => {
   res.json({ order });
 });
 
-module.exports = { getMe, updateMe, setStatus, updateLocation, listOffers, acceptOffer, declineOffer, listJobs, updateJobStatus, verifyArrivalOtp };
+module.exports = {
+  getMe,
+  updateMe,
+  setStatus,
+  updateLocation,
+  listOffers,
+  acceptOffer,
+  declineOffer,
+  listJobs,
+  updateJobStatus,
+  verifyArrivalOtp,
+  getEarningsSummary,
+};
