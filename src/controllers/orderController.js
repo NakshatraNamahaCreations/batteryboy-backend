@@ -30,17 +30,25 @@ const quoteOrder = asyncHandler(async (req, res) => {
   res.json({ pricing, battery });
 });
 
-const VENDOR_PUBLIC_FIELDS = 'name phone rating vendorType completedJobs';
+// `location`/`lastLocationAt` included so the customer app's live tracking
+// map can plot the partner's real, moving position (see vendorController.
+// updateLocation, pinged by the partner app every ~20s while online).
+const VENDOR_PUBLIC_FIELDS = 'name phone rating vendorType completedJobs location lastLocationAt';
 
 // GET /api/orders
 const listOrders = asyncHandler(async (req, res) => {
-  const orders = await Order.find({ userId: req.userId }).populate('vendorId', VENDOR_PUBLIC_FIELDS).sort({ createdAt: -1 });
+  const orders = await Order.find({ userId: req.userId })
+    .populate('vendorId', VENDOR_PUBLIC_FIELDS)
+    .populate('addressId', 'label line1 line2 lat lng')
+    .sort({ createdAt: -1 });
   res.json({ orders });
 });
 
 // GET /api/orders/:id
 const getOrder = asyncHandler(async (req, res) => {
-  const order = await Order.findOne({ _id: req.params.id, userId: req.userId }).populate('vendorId', VENDOR_PUBLIC_FIELDS);
+  const order = await Order.findOne({ _id: req.params.id, userId: req.userId })
+    .populate('vendorId', VENDOR_PUBLIC_FIELDS)
+    .populate('addressId', 'label line1 line2 lat lng');
   if (!order) return res.status(404).json({ message: 'Order not found' });
   res.json({ order });
 });
