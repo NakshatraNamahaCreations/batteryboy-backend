@@ -9,6 +9,12 @@ const { listCustomers, getCustomer } = require('../controllers/adminCustomerCont
 const { listBookings, getBooking, createBooking, updateBooking, nearbyVendorsForBooking } = require('../controllers/adminOrderController');
 const { getStats } = require('../controllers/adminStatsController');
 const {
+  listPartnerBusinesses,
+  createPartnerBusiness,
+  updatePartnerBusiness,
+  deletePartnerBusiness,
+} = require('../controllers/partnerBusinessController');
+const {
   listVehicleCategories,
   createVehicleCategory,
   updateVehicleCategory,
@@ -65,5 +71,10 @@ router.get('/vehicle-brands', listVehicleBrands);
 router.post('/vehicle-brands', createVehicleBrand);
 router.patch('/vehicle-brands/:id', updateVehicleBrand);
 router.delete('/vehicle-brands/:id', deleteVehicleBrand);
+
+router.get('/partner-businesses', listPartnerBusinesses);
+router.post('/partner-businesses', createPartnerBusiness);
+router.patch('/partner-businesses/:id', updatePartnerBusiness);
+router.delete('/partner-businesses/:id', deletePartnerBusiness);
 
 module.exports = router;
