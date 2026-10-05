@@ -14,6 +14,7 @@ const {
   updatePartnerBusiness,
   deletePartnerBusiness,
 } = require('../controllers/partnerBusinessController');
+const { adminListBatteries, createBattery, updateBattery, deleteBattery } = require('../controllers/batteryController');
 const {
   listSosIssues,
   createSosIssue,
@@ -86,6 +87,11 @@ router.get('/partner-businesses', listPartnerBusinesses);
 router.post('/partner-businesses', createPartnerBusiness);
 router.patch('/partner-businesses/:id', updatePartnerBusiness);
 router.delete('/partner-businesses/:id', deletePartnerBusiness);
+
+router.get('/batteries', adminListBatteries);
+router.post('/batteries', createBattery);
+router.patch('/batteries/:id', updateBattery);
+router.delete('/batteries/:id', deleteBattery);
 
 router.get('/sos-issues', listSosIssues);
 router.post('/sos-issues', createSosIssue);

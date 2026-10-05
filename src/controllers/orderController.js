@@ -13,6 +13,7 @@ async function resolveBattery(services, batteryId) {
   if (!batteryId) throw Object.assign(new Error('batteryId is required for a replacement service'), { status: 400 });
   const battery = await Battery.findById(batteryId);
   if (!battery) throw Object.assign(new Error('Battery not found'), { status: 404 });
+  if (battery.active === false) throw Object.assign(new Error('This battery is no longer available. Please choose another one.'), { status: 400 });
   return battery;
 }
 

@@ -14,6 +14,8 @@ const batterySchema = new mongoose.Schema(
     recommended: { type: Boolean, default: false },
     image: { type: String, default: '' },
     category: { type: String, default: 'four_wheeler', index: true },
+    // Hidden batteries leave the customer catalog but stay valid for old orders.
+    active: { type: Boolean, default: true },
   },
   { timestamps: true },
 );
