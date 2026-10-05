@@ -15,6 +15,16 @@ const {
   deletePartnerBusiness,
 } = require('../controllers/partnerBusinessController');
 const {
+  listSosIssues,
+  createSosIssue,
+  updateSosIssue,
+  deleteSosIssue,
+  listSosFixes,
+  createSosFix,
+  updateSosFix,
+  deleteSosFix,
+} = require('../controllers/sosController');
+const {
   listVehicleCategories,
   createVehicleCategory,
   updateVehicleCategory,
@@ -76,5 +86,15 @@ router.get('/partner-businesses', listPartnerBusinesses);
 router.post('/partner-businesses', createPartnerBusiness);
 router.patch('/partner-businesses/:id', updatePartnerBusiness);
 router.delete('/partner-businesses/:id', deletePartnerBusiness);
+
+router.get('/sos-issues', listSosIssues);
+router.post('/sos-issues', createSosIssue);
+router.patch('/sos-issues/:id', updateSosIssue);
+router.delete('/sos-issues/:id', deleteSosIssue);
+
+router.get('/sos-fixes', listSosFixes);
+router.post('/sos-fixes', createSosFix);
+router.patch('/sos-fixes/:id', updateSosFix);
+router.delete('/sos-fixes/:id', deleteSosFix);
 
 module.exports = router;
