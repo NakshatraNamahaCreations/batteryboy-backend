@@ -1,6 +1,10 @@
 const Vendor = require('../models/Vendor');
+const Order = require('../models/Order');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { normalizeIndianMobile } = require('../utils/phone');
+const { ACTIVE_JOB_STATUSES } = require('../services/dispatch');
+
+const escapeRegex = (t) => String(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Same number in any written form = same partner (see utils/phone.js).
 async function phoneTaken(ten, exceptId) {
@@ -14,7 +18,7 @@ const listVendors = asyncHandler(async (req, res) => {
   if (req.query.verified !== undefined) filter.verified = req.query.verified === 'true';
   if (req.query.active !== undefined) filter.active = req.query.active === 'true';
   if (req.query.q) {
-    const re = new RegExp(req.query.q, 'i');
+    const re = new RegExp(escapeRegex(String(req.query.q).trim()), 'i');
     filter.$or = [{ name: re }, { phone: re }, { email: re }];
   }
   const vendors = await Vendor.find(filter).sort({ createdAt: -1 });
@@ -58,6 +62,18 @@ const updateVendor = asyncHandler(async (req, res) => {
   if (typeof req.body.lat === 'number' && typeof req.body.lng === 'number') {
     update.location = { type: 'Point', coordinates: [req.body.lng, req.body.lat] };
     update.lastLocationAt = new Date();
+  }
+  if (update.name !== undefined) {
+    update.name = String(update.name).trim();
+    if (!update.name) return res.status(400).json({ message: 'Name cannot be empty' });
+  }
+  if (update.vendorType !== undefined) {
+    const current = await Vendor.findById(req.params.id).select('vendorType');
+    if (!current) return res.status(404).json({ message: 'Vendor not found' });
+    // A tow truck turned "technician" mid-job (or vice versa) would break that job.
+    if (current.vendorType !== update.vendorType && (await Order.exists({ vendorId: current._id, status: { $in: ACTIVE_JOB_STATUSES } }))) {
+      return res.status(400).json({ message: 'This partner is on an active job. Change their type after the job is completed.' });
+    }
   }
   if (update.phone !== undefined) {
     const ten = normalizeIndianMobile(update.phone);
