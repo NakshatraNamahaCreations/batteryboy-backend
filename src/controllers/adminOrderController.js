@@ -3,7 +3,7 @@ const Vendor = require('../models/Vendor');
 const Address = require('../models/Address');
 const User = require('../models/User');
 const { asyncHandler } = require('../utils/asyncHandler');
-const { vendorTypeFilterFor } = require('../services/dispatch');
+const { vendorTypeFilterFor, offerWaitingTowsTo } = require('../services/dispatch');
 const { applyCancellation } = require('../services/cancellation');
 const { serviceLabel } = require('../utils/pricing');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
@@ -128,6 +128,7 @@ const updateBooking = asyncHandler(async (req, res) => {
     if (update.date !== undefined) current.date = update.date;
     if (update.slot !== undefined) current.slot = update.slot;
     await current.save();
+    if (current.vendorId) await offerWaitingTowsTo(current.vendorId._id || current.vendorId).catch((err) => console.error('[dispatch] offerWaitingTowsTo failed:', err));
     await current.populate([{ path: 'userId', select: 'name phone' }, { path: 'vendorId', select: 'name phone' }]);
     return res.json({ booking: current });
   }

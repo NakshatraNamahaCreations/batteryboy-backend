@@ -19,6 +19,15 @@ const RING_RADII_KM = [4, 8, 12];
 const RING_WINDOW_MS = 30 * 1000;
 const SWEEP_INTERVAL_MS = 20 * 1000;
 
+// A job a partner has accepted and not yet finished.
+const ACTIVE_JOB_STATUSES = ['assigned', 'on_way', 'arrived', 'in_progress'];
+
+// A tow truck handles one tow at a time: towing partners with an unfinished
+// job get no new offers until it's completed (or cancelled).
+async function busyVendorIds() {
+  return Order.distinct('vendorId', { status: { $in: ACTIVE_JOB_STATUSES }, vendorId: { $ne: null } });
+}
+
 // Towing jobs go only to towing partners; every other job only to the
 // battery/mechanic partners (a tow truck can't fit a battery and vice versa).
 function vendorTypeFilterFor(services) {
@@ -26,12 +35,14 @@ function vendorTypeFilterFor(services) {
 }
 
 async function findNearbyVendorIds({ lng, lat, radiusKm, excludeIds, services }) {
+  const isTow = (services || []).includes('towing');
+  const busy = isTow ? await busyVendorIds() : [];
   const vendors = await Vendor.find({
     online: true,
     verified: true,
     active: true,
     vendorType: vendorTypeFilterFor(services),
-    _id: { $nin: excludeIds },
+    _id: { $nin: [...excludeIds, ...busy] },
     location: {
       $near: {
         $geometry: { type: 'Point', coordinates: [lng, lat] },
@@ -118,10 +129,46 @@ async function sweepStalledDispatches() {
   }
 }
 
+// The moment a towing partner is free (finished or lost their job, or just
+// went on duty), offer them tows already waiting nearby that skipped them
+// while they were busy — instead of making both wait for the next sweep.
+async function offerWaitingTowsTo(vendorId) {
+  const vendor = await Vendor.findById(vendorId);
+  if (!vendor || vendor.vendorType !== 'towing_provider' || !vendor.online || !vendor.verified || !vendor.active) return 0;
+  const [lng, lat] = vendor.location?.coordinates || [0, 0];
+  if (!lng && !lat) return 0;
+  if (await Order.exists({ vendorId: vendor._id, status: { $in: ACTIVE_JOB_STATUSES } })) return 0;
+  const maxKm = RING_RADII_KM[RING_RADII_KM.length - 1];
+  const waiting = await Order.find({
+    status: 'searching',
+    vendorId: null,
+    services: 'towing',
+    'dispatch.offeredVendorIds': { $ne: vendor._id },
+    'dispatch.declinedVendorIds': { $ne: vendor._id },
+  })
+    .select('_id addressId')
+    .populate('addressId', 'lat lng');
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const ids = waiting
+    .filter((o) => {
+      const a = o.addressId;
+      if (a?.lat == null || a?.lng == null) return false;
+      const dLat = toRad(a.lat - lat);
+      const dLng = toRad(a.lng - lng);
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(a.lat)) * Math.sin(dLng / 2) ** 2;
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))) <= maxKm;
+    })
+    .map((o) => o._id);
+  if (!ids.length) return 0;
+  const res = await Order.updateMany({ _id: { $in: ids }, status: 'searching', vendorId: null }, { $addToSet: { 'dispatch.offeredVendorIds': vendor._id } });
+  return res.modifiedCount || 0;
+}
+
 function startDispatchSweeper() {
   setInterval(() => {
     sweepStalledDispatches().catch((err) => console.error('[dispatch] sweep error:', err));
   }, SWEEP_INTERVAL_MS);
 }
 
-module.exports = { startDispatch, startDispatchSweeper, vendorTypeFilterFor, RING_RADII_KM, RING_WINDOW_MS };
+module.exports = { startDispatch, startDispatchSweeper, vendorTypeFilterFor, offerWaitingTowsTo, ACTIVE_JOB_STATUSES, RING_RADII_KM, RING_WINDOW_MS };

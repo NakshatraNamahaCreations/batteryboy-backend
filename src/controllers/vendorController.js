@@ -2,7 +2,14 @@ const Vendor = require('../models/Vendor');
 const Order = require('../models/Order');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { serializeVendor } = require('./vendorAuthController');
-const { RING_WINDOW_MS } = require('../services/dispatch');
+const { RING_WINDOW_MS, ACTIVE_JOB_STATUSES, offerWaitingTowsTo } = require('../services/dispatch');
+
+// A towing partner's unfinished job, if any — while it exists they get no
+// new requests (one tow at a time).
+async function currentTowJob(vendor) {
+  if (vendor?.vendorType !== 'towing_provider') return null;
+  return Order.findOne({ vendorId: vendor._id, status: { $in: ACTIVE_JOB_STATUSES } }).select('_id serviceLabel status');
+}
 const { earningsSummary, earningsRange } = require('../services/earnings');
 
 // GET /api/vendor/me
@@ -38,6 +45,7 @@ const setStatus = asyncHandler(async (req, res) => {
   const { online } = req.body;
   const vendor = await Vendor.findByIdAndUpdate(req.vendorId, { $set: { online: !!online } }, { new: true });
   if (!vendor) return res.status(404).json({ message: 'Partner not found' });
+  if (vendor.online) await offerWaitingTowsTo(vendor._id).catch((err) => console.error('[dispatch] offerWaitingTowsTo failed:', err));
   res.json({ vendor: serializeVendor(vendor) });
 });
 
@@ -65,6 +73,8 @@ function haversineKm(a, b) {
 // GET /api/vendor/offers — bookings currently being broadcast to this partner
 const listOffers = asyncHandler(async (req, res) => {
   const vendor = await Vendor.findById(req.vendorId);
+  const busyWith = await currentTowJob(vendor);
+  if (busyWith) return res.json({ offers: [], busyWithOrderId: busyWith._id });
   const orders = await Order.find({
     status: 'searching',
     vendorId: null,
@@ -101,6 +111,10 @@ const listOffers = asyncHandler(async (req, res) => {
 
 // POST /api/vendor/offers/:orderId/accept
 const acceptOffer = asyncHandler(async (req, res) => {
+  const vendor = await Vendor.findById(req.vendorId).select('vendorType');
+  if (await currentTowJob(vendor)) {
+    return res.status(409).json({ message: 'Finish your current tow first — new requests appear once it is completed.' });
+  }
   // Atomic: only succeeds if nobody has claimed it yet — the natural race
   // guard against two partners accepting the same booking at once.
   const order = await Order.findOneAndUpdate(
@@ -110,6 +124,17 @@ const acceptOffer = asyncHandler(async (req, res) => {
   );
   if (!order) {
     return res.status(409).json({ message: 'This job is no longer available — it may have been taken or cancelled.' });
+  }
+  // Two quick taps on two different offers could both pass the check above;
+  // if this partner now holds more than one tow, hand this one back.
+  if (vendor?.vendorType === 'towing_provider') {
+    const held = await Order.find({ vendorId: req.vendorId, status: { $in: ACTIVE_JOB_STATUSES } }).select('_id updatedAt').sort({ updatedAt: 1, _id: 1 });
+    // Both racing requests see the same list, so they agree on which tow to
+    // keep (the first claimed) and only the other one is handed back.
+    if (held.length > 1 && String(held[0]._id) !== String(order._id)) {
+      await Order.updateOne({ _id: order._id, vendorId: req.vendorId, status: 'assigned' }, { $set: { status: 'searching', vendorId: null } });
+      return res.status(409).json({ message: 'Finish your current tow first — new requests appear once it is completed.' });
+    }
   }
   res.json({ order });
 });
@@ -172,6 +197,7 @@ const updateJobStatus = asyncHandler(async (req, res) => {
 
   if (status === 'completed') {
     await Vendor.findByIdAndUpdate(req.vendorId, { $inc: { completedJobs: 1 } });
+    await offerWaitingTowsTo(req.vendorId).catch((err) => console.error('[dispatch] offerWaitingTowsTo failed:', err));
   }
 
   res.json({ order });

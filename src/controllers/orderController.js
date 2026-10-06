@@ -5,7 +5,7 @@ const Address = require('../models/Address');
 const Coupon = require('../models/Coupon');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { computePrice, serviceLabel } = require('../utils/pricing');
-const { startDispatch } = require('../services/dispatch');
+const { startDispatch, offerWaitingTowsTo } = require('../services/dispatch');
 const { resolveTowing } = require('../services/towing');
 const { applyCancellation } = require('../services/cancellation');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
@@ -144,8 +144,10 @@ const updateOrder = asyncHandler(async (req, res) => {
 const cancelOrder = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, userId: req.userId });
   if (!order) return res.status(404).json({ message: 'Order not found' });
+  const freedVendorId = order.vendorId;
   applyCancellation(order, { by: 'customer', reason: req.body?.reason });
   await order.save();
+  if (freedVendorId) await offerWaitingTowsTo(freedVendorId).catch((err) => console.error('[dispatch] offerWaitingTowsTo failed:', err));
   await order.populate([{ path: 'vendorId', select: VENDOR_PUBLIC_FIELDS }, { path: 'addressId', select: 'label line1 line2 lat lng' }]);
   res.json({ order });
 });
