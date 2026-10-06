@@ -15,6 +15,7 @@ const {
   deletePartnerBusiness,
 } = require('../controllers/partnerBusinessController');
 const { adminListBatteries, createBattery, updateBattery, deleteBattery } = require('../controllers/batteryController');
+const { getTowingOverview, updateTowingRates } = require('../controllers/adminTowingController');
 const {
   listSosIssues,
   createSosIssue,
@@ -92,6 +93,9 @@ router.get('/batteries', adminListBatteries);
 router.post('/batteries', createBattery);
 router.patch('/batteries/:id', updateBattery);
 router.delete('/batteries/:id', deleteBattery);
+
+router.get('/towing', getTowingOverview);
+router.put('/towing/rates', updateTowingRates);
 
 router.get('/sos-issues', listSosIssues);
 router.post('/sos-issues', createSosIssue);

@@ -26,6 +26,13 @@ const orderSchema = new mongoose.Schema(
     batteryLabel: { type: String, default: '' },
     addressId: { type: mongoose.Schema.Types.ObjectId, ref: 'Address', default: null },
     addressLabel: { type: String, default: '' },
+    // Towing only: where the vehicle is taken, and the pickup -> drop
+    // distance the fare was charged on.
+    drop: {
+      type: new mongoose.Schema({ label: String, lat: Number, lng: Number }, { _id: false }),
+      default: null,
+    },
+    tripKm: { type: Number, default: null },
     date: { type: String, default: '' },
     slotId: { type: String, default: '' },
     slot: { type: String, default: '' },

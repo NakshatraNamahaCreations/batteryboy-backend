@@ -3,6 +3,7 @@ const Vendor = require('../models/Vendor');
 const Address = require('../models/Address');
 const User = require('../models/User');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { vendorTypeFilterFor } = require('../services/dispatch');
 const { serviceLabel } = require('../utils/pricing');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
 
@@ -46,6 +47,7 @@ const nearbyVendorsForBooking = asyncHandler(async (req, res) => {
 
   const vendors = await Vendor.find({
     active: true,
+    vendorType: vendorTypeFilterFor(booking.services),
     location: {
       $near: { $geometry: { type: 'Point', coordinates: [address.lng, address.lat] } },
     },
@@ -114,6 +116,15 @@ const updateBooking = asyncHandler(async (req, res) => {
   // Manually assigning a partner also resolves the "searching" state, same
   // as if a partner had accepted the offer themselves.
   if (req.body.vendorId !== undefined) {
+    if (req.body.vendorId) {
+      const [booking, vendor] = await Promise.all([Order.findById(req.params.id).select('services'), Vendor.findById(req.body.vendorId).select('vendorType name')]);
+      if (!booking) return res.status(404).json({ message: 'Booking not found' });
+      if (!vendor) return res.status(404).json({ message: 'Partner not found' });
+      const isTow = booking.services.includes('towing');
+      if (isTow !== (vendor.vendorType === 'towing_provider')) {
+        return res.status(400).json({ message: isTow ? `${vendor.name || 'This partner'} is not a towing partner. Towing jobs can only go to towing partners.` : `${vendor.name || 'This partner'} is a towing partner and can only take towing jobs.` });
+      }
+    }
     update.vendorId = req.body.vendorId || null;
     if (req.body.vendorId && update.status === undefined) update.status = 'assigned';
   }

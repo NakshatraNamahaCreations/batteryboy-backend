@@ -19,11 +19,18 @@ const RING_RADII_KM = [4, 8, 12];
 const RING_WINDOW_MS = 30 * 1000;
 const SWEEP_INTERVAL_MS = 20 * 1000;
 
-async function findNearbyVendorIds({ lng, lat, radiusKm, excludeIds }) {
+// Towing jobs go only to towing partners; every other job only to the
+// battery/mechanic partners (a tow truck can't fit a battery and vice versa).
+function vendorTypeFilterFor(services) {
+  return (services || []).includes('towing') ? 'towing_provider' : { $ne: 'towing_provider' };
+}
+
+async function findNearbyVendorIds({ lng, lat, radiusKm, excludeIds, services }) {
   const vendors = await Vendor.find({
     online: true,
     verified: true,
     active: true,
+    vendorType: vendorTypeFilterFor(services),
     _id: { $nin: excludeIds },
     location: {
       $near: {
@@ -67,6 +74,7 @@ async function runRing(orderId, center, ringNumber) {
     lat: center.lat,
     radiusKm,
     excludeIds: alreadyOffered,
+    services: order.services,
   });
 
   const now = new Date();
@@ -116,4 +124,4 @@ function startDispatchSweeper() {
   }, SWEEP_INTERVAL_MS);
 }
 
-module.exports = { startDispatch, startDispatchSweeper, RING_RADII_KM, RING_WINDOW_MS };
+module.exports = { startDispatch, startDispatchSweeper, vendorTypeFilterFor, RING_RADII_KM, RING_WINDOW_MS };

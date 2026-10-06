@@ -6,6 +6,7 @@ const Coupon = require('../models/Coupon');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { computePrice, serviceLabel } = require('../utils/pricing');
 const { startDispatch } = require('../services/dispatch');
+const { resolveTowing } = require('../services/towing');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
 
 async function resolveBattery(services, batteryId) {
@@ -17,18 +18,24 @@ async function resolveBattery(services, batteryId) {
   return battery;
 }
 
-// POST /api/orders/quote { services, night, batteryId?, couponCode? }
+// POST /api/orders/quote { services, night, batteryId?, couponCode?, addressId?, drop? }
 // Live price preview — does not touch the database beyond read-only lookups.
+// Towing also needs addressId (pickup) and drop { lat, lng, label }.
 const quoteOrder = asyncHandler(async (req, res) => {
-  const { services, night, batteryId, couponCode } = req.body;
+  const { services, night, batteryId, couponCode, addressId, drop } = req.body;
   if (!Array.isArray(services) || services.length === 0) {
     return res.status(400).json({ message: 'services must be a non-empty array' });
   }
 
   const battery = await resolveBattery(services, batteryId);
+  let towing = null;
+  if (services.includes('towing')) {
+    const address = addressId ? await Address.findOne({ _id: addressId, userId: req.userId }) : null;
+    towing = await resolveTowing(services, address, drop);
+  }
   const coupons = await Coupon.find({ active: true });
-  const pricing = computePrice({ services, night, couponCode }, battery, coupons);
-  res.json({ pricing, battery });
+  const pricing = computePrice({ services, night, couponCode, towing: towing?.fare }, battery, coupons);
+  res.json({ pricing, battery, towing });
 });
 
 // `location`/`lastLocationAt` included so the customer app's live tracking
@@ -57,7 +64,7 @@ const getOrder = asyncHandler(async (req, res) => {
 // POST /api/orders
 // { services, vehicleId?, batteryId?, addressId, date, slotId, slot, night, couponCode?, paymentMethod? }
 const createOrder = asyncHandler(async (req, res) => {
-  const { services, vehicleId, batteryId, addressId, date, slotId, slot, night, couponCode, paymentMethod } = req.body;
+  const { services, vehicleId, batteryId, addressId, date, slotId, slot, night, couponCode, paymentMethod, drop } = req.body;
 
   if (!Array.isArray(services) || services.length === 0) {
     return res.status(400).json({ message: 'services must be a non-empty array' });
@@ -76,10 +83,11 @@ const createOrder = asyncHandler(async (req, res) => {
   }
 
   const battery = await resolveBattery(services, batteryId);
+  const towing = await resolveTowing(services, address, drop);
   const coupons = await Coupon.find({ active: true });
   // The client may show its own live estimate, but the amount that gets
   // charged is always recomputed here from trusted server-side data.
-  const pricing = computePrice({ services, night, couponCode }, battery, coupons);
+  const pricing = computePrice({ services, night, couponCode, towing: towing?.fare }, battery, coupons);
 
   const order = await Order.create({
     userId: req.userId,
@@ -91,6 +99,8 @@ const createOrder = asyncHandler(async (req, res) => {
     batteryLabel: battery ? `${battery.brand} ${battery.model}` : '',
     addressId: address._id,
     addressLabel: address.label,
+    drop: towing?.drop ?? null,
+    tripKm: towing?.tripKm ?? null,
     date: date || '',
     slotId: slotId || '',
     slot: slot || '',
