@@ -1,5 +1,12 @@
 const Vendor = require('../models/Vendor');
 const { asyncHandler } = require('../utils/asyncHandler');
+const { normalizeIndianMobile } = require('../utils/phone');
+
+// Same number in any written form = same partner (see utils/phone.js).
+async function phoneTaken(ten, exceptId) {
+  const found = await Vendor.findOne({ phone: { $in: [ten, `+91${ten}`] }, ...(exceptId ? { _id: { $ne: exceptId } } : {}) }).select('name');
+  return found;
+}
 
 // GET /api/admin/vendors?verified=true&active=true&q=search
 const listVendors = asyncHandler(async (req, res) => {
@@ -16,12 +23,18 @@ const listVendors = asyncHandler(async (req, res) => {
 
 // POST /api/admin/vendors
 const createVendor = asyncHandler(async (req, res) => {
-  const { name, phone, email, city, vendorType, skills, serviceAreas, notes, lat, lng } = req.body;
+  const { name, phone, email, city, vendorType, skills, serviceAreas, notes, lat, lng, verified } = req.body;
   if (!name || !phone) return res.status(400).json({ message: 'name and phone are required' });
+  const ten = normalizeIndianMobile(phone);
+  if (!ten) return res.status(400).json({ message: 'Enter a valid 10-digit Indian mobile number' });
+  const taken = await phoneTaken(ten);
+  if (taken) return res.status(409).json({ message: `This number is already registered${taken.name ? ` to ${taken.name}` : ''}. Find them in Vendors.` });
 
   const vendor = await Vendor.create({
-    name,
-    phone,
+    name: String(name).trim(),
+    phone: ten,
+    // An admin adding a partner directly is vouching for them.
+    verified: verified === true,
     email: email || '',
     city: city || '',
     vendorType: vendorType || 'multi_service',
@@ -45,6 +58,13 @@ const updateVendor = asyncHandler(async (req, res) => {
   if (typeof req.body.lat === 'number' && typeof req.body.lng === 'number') {
     update.location = { type: 'Point', coordinates: [req.body.lng, req.body.lat] };
     update.lastLocationAt = new Date();
+  }
+  if (update.phone !== undefined) {
+    const ten = normalizeIndianMobile(update.phone);
+    if (!ten) return res.status(400).json({ message: 'Enter a valid 10-digit Indian mobile number' });
+    const taken = await phoneTaken(ten, req.params.id);
+    if (taken) return res.status(409).json({ message: `This number is already registered${taken.name ? ` to ${taken.name}` : ''}.` });
+    update.phone = ten;
   }
   const vendor = await Vendor.findByIdAndUpdate(req.params.id, { $set: update }, { new: true, runValidators: true });
   if (!vendor) return res.status(404).json({ message: 'Vendor not found' });

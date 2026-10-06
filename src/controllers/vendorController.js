@@ -3,6 +3,7 @@ const Order = require('../models/Order');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { serializeVendor } = require('./vendorAuthController');
 const { RING_WINDOW_MS } = require('../services/dispatch');
+const { earningsSummary, earningsRange } = require('../services/earnings');
 
 // GET /api/vendor/me
 const getMe = asyncHandler(async (req, res) => {
@@ -124,36 +125,16 @@ const declineOffer = asyncHandler(async (req, res) => {
   res.json({ success: true });
 });
 
-// GET /api/vendor/earnings — totals for the common wallet-screen date
-// filters, all computed server-side in one call so switching the period chip
-// on the app is a local state flip, not a fresh network request each time.
+// GET /api/vendor/earnings — totals for today / yesterday / this week /
+// this month / this year / all time (India time), in one call.
 const getEarningsSummary = asyncHandler(async (req, res) => {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfYesterday = new Date(startOfToday);
-  startOfYesterday.setDate(startOfYesterday.getDate() - 1);
-  const startOfWeek = new Date(startOfToday);
-  startOfWeek.setDate(startOfWeek.getDate() - now.getDay()); // back to this week's Sunday
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  res.json(await earningsSummary(req.vendorId));
+});
 
-  async function sumSince(since, until) {
-    const match = { vendorId: req.vendorId, status: 'completed', updatedAt: { $gte: since } };
-    if (until) match.updatedAt.$lt = until;
-    const [row] = await Order.aggregate([{ $match: match }, { $group: { _id: null, amount: { $sum: '$amount' }, jobs: { $sum: 1 } } }]);
-    return { amount: row?.amount || 0, jobs: row?.jobs || 0 };
-  }
-
-  const [today, yesterday, week, month, year, allTime] = await Promise.all([
-    sumSince(startOfToday),
-    sumSince(startOfYesterday, startOfToday),
-    sumSince(startOfWeek),
-    sumSince(startOfMonth),
-    sumSince(startOfYear),
-    sumSince(new Date(0)),
-  ]);
-
-  res.json({ today, yesterday, week, month, year, allTime });
+// GET /api/vendor/earnings/range?from=YYYY-MM-DD&to=YYYY-MM-DD — custom
+// period: totals, day/month breakdown for the chart and the trips.
+const getEarningsRange = asyncHandler(async (req, res) => {
+  res.json(await earningsRange(req.vendorId, req.query.from, req.query.to));
 });
 
 // GET /api/vendor/jobs?active=true
@@ -175,8 +156,19 @@ const updateJobStatus = asyncHandler(async (req, res) => {
   if (!ALLOWED_VENDOR_STATUSES.includes(status)) {
     return res.status(400).json({ message: `status must be one of ${ALLOWED_VENDOR_STATUSES.join(', ')}` });
   }
-  const order = await Order.findOneAndUpdate({ _id: req.params.orderId, vendorId: req.vendorId }, { $set: { status } }, { new: true });
-  if (!order) return res.status(404).json({ message: 'Job not found' });
+  // completedAt dates the earning (updatedAt moves on any later edit).
+  const update = status === 'completed' ? { status, completedAt: new Date() } : { status };
+  const order = await Order.findOneAndUpdate(
+    { _id: req.params.orderId, vendorId: req.vendorId, status: { $nin: ['cancelled', 'completed'] } },
+    { $set: update },
+    { new: true },
+  );
+  if (!order) {
+    const existing = await Order.findOne({ _id: req.params.orderId, vendorId: req.vendorId }).select('status');
+    if (existing?.status === 'cancelled') return res.status(409).json({ message: 'The customer cancelled this job.' });
+    if (existing?.status === 'completed') return res.status(409).json({ message: 'This job is already completed.' });
+    return res.status(404).json({ message: 'Job not found' });
+  }
 
   if (status === 'completed') {
     await Vendor.findByIdAndUpdate(req.vendorId, { $inc: { completedJobs: 1 } });
@@ -190,6 +182,7 @@ const verifyArrivalOtp = asyncHandler(async (req, res) => {
   const { otp } = req.body;
   const order = await Order.findOne({ _id: req.params.orderId, vendorId: req.vendorId });
   if (!order) return res.status(404).json({ message: 'Job not found' });
+  if (order.status === 'cancelled') return res.status(409).json({ message: 'The customer cancelled this job.' });
 
   if (!otp || String(otp).trim() !== order.serviceOtp) {
     return res.status(401).json({ message: 'Incorrect code. Ask the customer to read it out again.' });
@@ -212,4 +205,5 @@ module.exports = {
   updateJobStatus,
   verifyArrivalOtp,
   getEarningsSummary,
+  getEarningsRange,
 };

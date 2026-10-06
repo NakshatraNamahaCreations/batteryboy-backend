@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const Vendor = require('../models/Vendor');
+const { normalizeIndianMobile } = require('../utils/phone');
 const { generateOtp, isOtpValid } = require('../utils/otp');
 const { asyncHandler } = require('../utils/asyncHandler');
 
@@ -31,13 +32,22 @@ function serializeVendor(vendor) {
 // dispatch.findNearbyVendorIds only offers jobs to `verified: true`
 // partners, so an admin still has to approve them (Vendors page) before
 // they receive real bookings.
+// Finds the partner however the number was written (an admin may have typed
+// "+91 98765 43210"); older records may hold the raw form.
+function findVendorByPhone(raw) {
+  const ten = normalizeIndianMobile(raw);
+  const forms = [...new Set([ten, ten && `+91${ten}`, String(raw || '').trim()].filter(Boolean))];
+  return Vendor.findOne({ phone: { $in: forms } });
+}
+
 const sendOtp = asyncHandler(async (req, res) => {
   const { phone } = req.body;
-  if (!phone || !phone.trim()) return res.status(400).json({ message: 'phone is required' });
+  const ten = normalizeIndianMobile(phone);
+  if (!ten) return res.status(400).json({ message: 'Enter a valid 10-digit mobile number' });
 
-  let vendor = await Vendor.findOne({ phone: phone.trim() });
+  let vendor = await findVendorByPhone(phone);
   if (!vendor) {
-    vendor = await Vendor.create({ phone: phone.trim() });
+    vendor = await Vendor.create({ phone: ten });
   }
 
   const { code, expiresAt } = generateOtp();
@@ -54,7 +64,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
   const { phone, otp } = req.body;
   if (!phone || !otp) return res.status(400).json({ message: 'phone and otp are required' });
 
-  const vendor = await Vendor.findOne({ phone: phone.trim() });
+  const vendor = await findVendorByPhone(phone);
   if (!vendor || !isOtpValid(vendor, otp)) {
     return res.status(401).json({ message: 'Invalid or expired OTP' });
   }

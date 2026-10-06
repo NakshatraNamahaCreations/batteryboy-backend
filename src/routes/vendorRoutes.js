@@ -13,6 +13,7 @@ const {
   updateJobStatus,
   verifyArrivalOtp,
   getEarningsSummary,
+  getEarningsRange,
 } = require('../controllers/vendorController');
 const { chatHandlers } = require('../controllers/chatController');
 
@@ -34,6 +35,7 @@ router.post('/offers/:orderId/accept', acceptOffer);
 router.post('/offers/:orderId/decline', declineOffer);
 
 router.get('/earnings', getEarningsSummary);
+router.get('/earnings/range', getEarningsRange);
 router.get('/jobs', listJobs);
 router.patch('/jobs/:orderId/status', updateJobStatus);
 router.post('/jobs/:orderId/verify-otp', verifyArrivalOtp);

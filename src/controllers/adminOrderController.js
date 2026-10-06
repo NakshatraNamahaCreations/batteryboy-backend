@@ -4,6 +4,7 @@ const Address = require('../models/Address');
 const User = require('../models/User');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { vendorTypeFilterFor } = require('../services/dispatch');
+const { applyCancellation } = require('../services/cancellation');
 const { serviceLabel } = require('../utils/pricing');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
 
@@ -16,6 +17,7 @@ const SERVICE_CODES = ['jumpstart', 'replacement', 'install', 'check', 'scrap', 
 const listBookings = asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
+  if (req.query.refund) filter['refund.status'] = req.query.refund;
   if (req.query.q) {
     const re = new RegExp(req.query.q, 'i');
     filter.$or = [{ invoiceNo: re }, { vehicleLabel: re }, { addressLabel: re }, { serviceLabel: re }];
@@ -113,6 +115,22 @@ const updateBooking = asyncHandler(async (req, res) => {
   for (const field of editable) {
     if (req.body[field] !== undefined) update[field] = req.body[field];
   }
+  if (update.status === 'completed') update.completedAt = new Date();
+
+  const current = await Order.findById(req.params.id);
+  if (!current) return res.status(404).json({ message: 'Booking not found' });
+  // A cancellation carries a refund record — don't let it be silently undone.
+  if (current.status === 'cancelled' && update.status && update.status !== 'cancelled') {
+    return res.status(400).json({ message: 'A cancelled booking cannot be reopened. Create a new booking instead.' });
+  }
+  if (update.status === 'cancelled' && current.status !== 'cancelled') {
+    applyCancellation(current, { by: 'admin', reason: req.body.cancelReason || 'Cancelled by Battery Boy' });
+    if (update.date !== undefined) current.date = update.date;
+    if (update.slot !== undefined) current.slot = update.slot;
+    await current.save();
+    await current.populate([{ path: 'userId', select: 'name phone' }, { path: 'vendorId', select: 'name phone' }]);
+    return res.json({ booking: current });
+  }
   // Manually assigning a partner also resolves the "searching" state, same
   // as if a partner had accepted the offer themselves.
   if (req.body.vendorId !== undefined) {
@@ -135,4 +153,23 @@ const updateBooking = asyncHandler(async (req, res) => {
   res.json({ booking });
 });
 
-module.exports = { listBookings, getBooking, createBooking, updateBooking, nearbyVendorsForBooking };
+// PATCH /api/admin/bookings/:id/refund { reference } — admin has paid the
+// refund back (UPI/bank transfer); records the UTR / reference number.
+const markRefundProcessed = asyncHandler(async (req, res) => {
+  const booking = await Order.findById(req.params.id);
+  if (!booking) return res.status(404).json({ message: 'Booking not found' });
+  if (booking.refund?.status !== 'pending') {
+    return res.status(400).json({ message: booking.refund?.status === 'processed' ? 'This refund is already marked as paid.' : 'There is no refund to pay for this booking.' });
+  }
+  const reference = String(req.body?.reference || '').trim().slice(0, 80);
+  if (!reference) return res.status(400).json({ message: 'Enter the UPI / bank reference (UTR) of the refund payment.' });
+  booking.refund.status = 'processed';
+  booking.refund.processedAt = new Date();
+  booking.refund.reference = reference;
+  booking.markModified('refund');
+  await booking.save();
+  await booking.populate([{ path: 'userId', select: 'name phone' }, { path: 'vendorId', select: 'name phone' }]);
+  res.json({ booking });
+});
+
+module.exports = { listBookings, getBooking, createBooking, updateBooking, nearbyVendorsForBooking, markRefundProcessed };

@@ -7,6 +7,7 @@ const { asyncHandler } = require('../utils/asyncHandler');
 const { computePrice, serviceLabel } = require('../utils/pricing');
 const { startDispatch } = require('../services/dispatch');
 const { resolveTowing } = require('../services/towing');
+const { applyCancellation } = require('../services/cancellation');
 const { makeInvoiceNo, makeServiceOtp } = require('../utils/orderCodes');
 
 async function resolveBattery(services, batteryId) {
@@ -121,12 +122,15 @@ const createOrder = asyncHandler(async (req, res) => {
   res.status(201).json({ order });
 });
 
-// PATCH /api/orders/:id { status?, date?, slot?, slotId? }
+// PATCH /api/orders/:id { date?, slot?, slotId? } — reschedule only. Status
+// is never customer-editable (that let the app mark its own order
+// "completed"); cancelling goes through POST /:id/cancel.
 const updateOrder = asyncHandler(async (req, res) => {
   const order = await Order.findOne({ _id: req.params.id, userId: req.userId });
   if (!order) return res.status(404).json({ message: 'Order not found' });
+  if (['completed', 'cancelled'].includes(order.status)) return res.status(400).json({ message: `This booking is ${order.status} and can no longer be changed.` });
 
-  const editable = ['status', 'date', 'slot', 'slotId'];
+  const editable = ['date', 'slot', 'slotId'];
   for (const field of editable) {
     if (req.body[field] !== undefined) order[field] = req.body[field];
   }
@@ -135,4 +139,15 @@ const updateOrder = asyncHandler(async (req, res) => {
   res.json({ order });
 });
 
-module.exports = { quoteOrder, listOrders, getOrder, createOrder, updateOrder };
+// POST /api/orders/:id/cancel { reason } — cancels and records the refund
+// (full amount for prepaid bookings).
+const cancelOrder = asyncHandler(async (req, res) => {
+  const order = await Order.findOne({ _id: req.params.id, userId: req.userId });
+  if (!order) return res.status(404).json({ message: 'Order not found' });
+  applyCancellation(order, { by: 'customer', reason: req.body?.reason });
+  await order.save();
+  await order.populate([{ path: 'vendorId', select: VENDOR_PUBLIC_FIELDS }, { path: 'addressId', select: 'label line1 line2 lat lng' }]);
+  res.json({ order });
+});
+
+module.exports = { quoteOrder, listOrders, getOrder, createOrder, updateOrder, cancelOrder };

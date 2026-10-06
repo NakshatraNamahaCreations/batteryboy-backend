@@ -50,6 +50,29 @@ const orderSchema = new mongoose.Schema(
       default: 'searching',
     },
     invoiceNo: { type: String, default: '' },
+    // When the partner marked the job complete — dates their earnings.
+    completedAt: { type: Date, default: null },
+    // Set when the booking is cancelled (see services/cancellation.js).
+    cancellation: {
+      type: new mongoose.Schema({ by: { type: String, enum: ['customer', 'admin'] }, reason: String, at: Date }, { _id: false }),
+      default: null,
+    },
+    // pending = owed to the customer, processed = paid back by admin,
+    // not_required = nothing was paid (cash / no payment step).
+    refund: {
+      type: new mongoose.Schema(
+        {
+          amount: { type: Number, default: 0 },
+          method: { type: String, default: '' },
+          status: { type: String, enum: ['pending', 'processed', 'not_required'], default: 'pending' },
+          initiatedAt: Date,
+          processedAt: Date,
+          reference: { type: String, default: '' },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
     // 4-digit code generated the moment the booking is created. The partner
     // app collects this from the customer on arrival before starting work —
     // see vendorController.verifyArrivalOtp.
